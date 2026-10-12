@@ -21,7 +21,7 @@ Queen Mary 是完整示范案例，核心保持通用。交付可启动的软件
 
 ## 工作位置与起点
 
-- 主仓库：`C:\Users\杨睿\Desktop\HMS_Queen_Mary_建模成果_2026-09-17`。
+- 主仓库：`<home>\Desktop\HMS_Queen_Mary_建模成果_2026-09-17`。
 - 核心：`tools/plimsoll/`；规划：`docs/sps-replacement/`。
 - 先读 `PLAN.md`、`SPEC.md`、`COVERAGE.md`、`2026-09-22-calculation-integrity.md` 和实际代码。
 - 当前已核验提交为 `e1596ea`，最新计算修正尚在本地工作树；执行时重新核对，不能覆盖其他人的后续工作。

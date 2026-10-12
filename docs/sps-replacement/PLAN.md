@@ -25,8 +25,8 @@
 
 ## 如何续接（给下一个会话读）
 
-**仓库根**：`C:\Users\杨睿\Desktop\HMS_Queen_Mary_建模成果_2026-09-17`
-**解释器**：`C:\Users\杨睿\.workbuddy\binaries\python\versions\3.13.12\python.exe`
+**仓库根**：`<home>\Desktop\HMS_Queen_Mary_建模成果_2026-09-17`
+**解释器**：`<home>\.workbuddy\binaries\python\versions\3.13.12\python.exe`
 
 ### 按顺序读这四份，不用问任何人
 
