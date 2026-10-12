@@ -1,0 +1,537 @@
+"""Polygon-section hydrostatics using half-plane clipping and trapezoidal quadrature.
+
+Sections describe a finite sealed envelope. Resolution and supplied geometry
+limit accuracy; geometric integration alone does not establish seaworthiness.
+Coordinates in metres: x forward, y starboard, z upward.
+"""
+
+from __future__ import annotations
+
+import math
+
+# ---------------------------------------------------------------- 多边形工具
+
+
+def polygon_area_moments(poly):
+    """闭合多边形的面积与一阶矩（对 y、z）。
+
+    用格林公式（鞋带公式的推广）：
+        A  = ½ Σ (y_i·z_{i+1} − y_{i+1}·z_i)
+        Ay = 1/6 Σ (y_i + y_{i+1})(y_i·z_{i+1} − y_{i+1}·z_i)
+        Az = 1/6 Σ (z_i + z_{i+1})(y_i·z_{i+1} − y_{i+1}·z_i)
+    返回 (A, Ay, Az)。A 的符号取决于绕向，调用方按需取正。
+    """
+    n = len(poly)
+    if n < 3:
+        return 0.0, 0.0, 0.0
+    two_a = 0.0
+    ay6 = 0.0
+    az6 = 0.0
+    for i in range(n):
+        y0, z0 = poly[i]
+        y1, z1 = poly[(i + 1) % n]
+        cross = y0 * z1 - y1 * z0
+        two_a += cross
+        ay6 += (y0 + y1) * cross
+        az6 += (z0 + z1) * cross
+    return 0.5 * two_a, ay6 / 6.0, az6 / 6.0
+
+
+def clip_below_line(poly, tan_phi, d):
+    """保留多边形中 z ≤ y·tanφ + d 的部分（水线以下）。
+
+    Sutherland–Hodgman 半平面裁剪：水线在剖面平面内是一条直线
+    z = y·tanφ + d（φ 为横倾角，d 为该剖面的水线截距）。
+    """
+    if not poly:
+        return []
+    out = []
+    n = len(poly)
+
+    def inside(p):
+        y, z = p
+        return z <= y * tan_phi + d + 1e-12
+
+    def intersect(p, q):
+        # 线性插值求与 z = y·tanφ + d 的交点
+        y0, z0 = p
+        y1, z1 = q
+        f0 = z0 - (y0 * tan_phi + d)
+        f1 = z1 - (y1 * tan_phi + d)
+        denom = f0 - f1
+        if abs(denom) < 1e-15:
+            return p
+        t = f0 / denom
+        return (y0 + t * (y1 - y0), z0 + t * (z1 - z0))
+
+    for i in range(n):
+        cur = poly[i]
+        prev = poly[i - 1]
+        cur_in = inside(cur)
+        prev_in = inside(prev)
+        if cur_in:
+            if not prev_in:
+                out.append(intersect(prev, cur))
+            out.append(cur)
+        elif prev_in:
+            out.append(intersect(prev, cur))
+    return out
+
+
+# ---------------------------------------------------------------- 站位船体
+
+
+class StationedHull:
+    """一组站位剖面构成的船体。stations = [(x, polygon), ...]，x 递增。"""
+
+    def __init__(self, stations, name=""):
+        if len(stations) < 3:
+            raise ValueError("至少需要 3 个站位")
+        self.stations = [(float(x), list(poly)) for x, poly in stations]
+        self.stations.sort(key=lambda s: s[0])
+        for _, poly in self.stations:
+            if len(poly) < 3:
+                raise ValueError("每个剖面的多边形至少 3 个点")
+        self.name = name
+
+    @property
+    def length(self):
+        return self.stations[-1][0] - self.stations[0][0]
+
+    def section_under_line(self, poly, tan_phi, d):
+        """单个剖面在水线以下的 (面积, Ay, Az)。"""
+        clipped = clip_below_line(poly, tan_phi, d)
+        if len(clipped) < 3:
+            return 0.0, 0.0, 0.0
+        a, ay, az = polygon_area_moments(clipped)
+        if a < 0:  # 统一取正，矩随之翻转
+            a, ay, az = -a, -ay, -az
+        return a, ay, az
+
+    def integrate(self, phi_rad, d, trim_rad=0.0):
+        """沿 x 积分，返回该浮态下的体积、浮心、浮心纵向位置与水线面面积。
+
+        浮态由**一张水线平面**确定，在船体坐标里写成
+            z = x·tanθ + y·tanφ + d
+        其中 φ = 横倾（绕 x 轴，右舷下沉为正）、θ = 纵倾。
+
+        **θ 的符号约定：θ > 0 = 艏倾（bow down）** ——
+        水线在船体坐标里朝舰艏（+x）方向抬高，故逐站截距
+            d(x) = d + x·tanθ
+        艏部截距更大、浸没更深。
+
+        关键点：固定 x 时水线在剖面内仍是**一条直线** `z = y·tanφ + d(x)`，
+        与纯横倾只有截距不同 —— 所以倾斜用**同一套裁剪逻辑**，
+        不需要第二种几何算法。这是把纵倾做成一个参数而不是新函数的原因。
+
+        返回 `xlcb` = 浮心纵向位置（相对船体坐标原点）。纵倾平衡要用它。
+        """
+        tan_phi = math.tan(phi_rad)
+        tan_trim = math.tan(trim_rad)
+        # 水线面是斜平面：面积元 dx·dy 要乘 sqrt(1 + tan²φ + tan²θ)
+        area_factor = math.sqrt(1.0 + tan_phi * tan_phi + tan_trim * tan_trim)
+        xs = [x for x, _ in self.stations]
+        areas, ays, azs, mxs, chords = [], [], [], [], []
+        for x, poly in self.stations:
+            d_x = d + x * tan_trim
+            a, ay, az = self.section_under_line(poly, tan_phi, d_x)
+            areas.append(a)
+            ays.append(ay)
+            azs.append(az)
+            mxs.append(x * a)
+            w = _line_chord_halfwidth(poly, tan_phi, d_x)
+            chords.append(0.0 if w is None else 2.0 * w)
+        vol = _trapz(areas, xs)
+        awp = _trapz(chords, xs) * area_factor
+        if vol <= 1e-12:
+            return {
+                "volume": 0.0, "yb": 0.0, "zb": 0.0, "xlcb": 0.0, "awp": awp,
+                "trace": {
+                    "volume": {"formula": "∫A(x)dx clipped to waterline",
+                               "source": "StationedHull.integrate",
+                               "estimate": True},
+                },
+            }
+        result = {
+            "volume": vol,
+            "yb": _trapz(ays, xs) / vol,
+            "zb": _trapz(azs, xs) / vol,
+            "xlcb": _trapz(mxs, xs) / vol,
+            "awp": awp,
+        }
+        # 阶段 5.1：每个输出键带溯源（不 round）
+        result["trace"] = {
+            "volume": {"formula": "trapz(station clipped areas, x)",
+                       "source": "StationedHull.integrate",
+                       "estimate": False},
+            "yb": {"formula": "trapz(Ay,x)/volume",
+                   "source": "StationedHull.integrate", "estimate": False},
+            "zb": {"formula": "trapz(Az,x)/volume",
+                   "source": "StationedHull.integrate", "estimate": False},
+            "xlcb": {"formula": "trapz(x*A,x)/volume",
+                     "source": "StationedHull.integrate", "estimate": False},
+            "awp": {"formula": "trapz(chord,x)*sqrt(1+tan²φ+tan²θ)",
+                    "source": "StationedHull.integrate", "estimate": False},
+        }
+        return result
+
+    def solve_waterline(self, phi_rad, target_volume, lo=None, hi=None, tol=1e-9,
+                        trim_rad=0.0):
+        """解出使浸没体积等于 target_volume 的水线截距 d（二分法）。
+
+        这是 GZ 曲线的核心步骤：**等体积倾斜**要求每个横倾角下都重新
+        找到平衡水线，船才会既不浮起也不下沉。
+        `trim_rad` 传入时按给定纵倾求解。**解 θ 本身用
+        `solve_trim_equilibrium`（阶段 2.2）**，那是二维求根，不要混进本函数。
+        """
+        for name, value in (("phi_rad", phi_rad), ("trim_rad", trim_rad),
+                            ("target_volume", target_volume), ("tol", tol)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{name} must be a finite real number")
+        if target_volume <= 0 or tol <= 0:
+            raise ValueError("target_volume and tol must be positive")
+        q, p = math.tan(phi_rad), math.tan(trim_rad)
+        support = [z-q*y-p*x for x, poly in self.stations for y, z in poly]
+        lo = min(support) if lo is None else lo
+        hi = max(support) if hi is None else hi
+        if (isinstance(lo, bool) or isinstance(hi, bool)
+                or not isinstance(lo, (int, float)) or not isinstance(hi, (int, float))
+                or not math.isfinite(lo) or not math.isfinite(hi) or lo >= hi):
+            raise ValueError("waterline bracket must be finite with lo < hi")
+        v_lo = self.integrate(phi_rad, lo, trim_rad)["volume"]
+        v_hi = self.integrate(phi_rad, hi, trim_rad)["volume"]
+        if not v_lo <= target_volume <= v_hi:
+            raise ValueError("target_volume 超出当前限界内的可浸没体积范围 (outside attainable volume bracket)")
+        if target_volume == v_lo:
+            return lo
+        if target_volume == v_hi:
+            return hi
+        volume_tol = max(target_volume*1e-11, math.ulp(target_volume)*64)
+        for _ in range(200):
+            mid = 0.5 * (lo + hi)
+            v = self.integrate(phi_rad, mid, trim_rad)["volume"]
+            if hi-lo <= tol and abs(v-target_volume) <= volume_tol:
+                return mid
+            if v < target_volume:
+                lo = mid
+            else:
+                hi = mid
+            if mid == lo == hi or math.nextafter(lo, hi) >= hi:
+                break
+        mid = 0.5*(lo+hi)
+        residual = self.integrate(phi_rad, mid, trim_rad)["volume"]-target_volume
+        if not math.isfinite(residual) or abs(residual) > volume_tol:
+            raise ValueError("equal-volume waterline did not converge within the volume tolerance")
+        return mid
+
+    def solve_trim_equilibrium(self, target_volume, target_lcb, *,
+                               phi_rad=0.0,
+                               theta_lo=None, theta_hi=None,
+                               vol_tol=1e-9, lcb_tol=1e-6,
+                               volume_eq_tol=None,
+                               max_outer=80):
+        """纵倾平衡（阶段 2.2）：同时解出水线截距 d 与纵倾角 θ。
+
+        给定目标排水体积 V* 与目标浮心纵向位置 `target_lcb`（= LCG，
+        **与 `integrate().xlcb` 同一船体坐标原点**），求 (d, θ) 使
+
+            ∇(d, θ) = V*
+            xlcb(d, θ) = target_lcb
+
+        **θ > 0 = 艏倾（bow down）** —— 与 `integrate` / `solve_waterline` 一致。
+
+        算法：嵌套求根，**不要与 `solve_waterline` 混成一层**。
+          内层：固定 θ，`solve_waterline` 二分 d 使体积达标。
+          外层：残差 r(θ) = xlcb − target_lcb，在 θ 上二分；括号不足时扩大。
+
+        成功条件（**体积与 LCB 双门闩**，任一未达标即 ValueError）：
+          |∇ − V*| ≤ volume_eq_tol  且  |xlcb − target_lcb| ≤ lcb_tol
+        V* 超过船体可浸没体积时内层只能解到最大浸没 → 体积残差暴露并抛错。
+
+        直壁方箱、整段浸没时闭式解为
+            d* = keel + V*/(L·B)   （与 θ 无关）
+            tanθ = 12·T·LCB / L² ,  T = V*/(L·B)
+        可用作测试锚点。
+
+        返回 dict（全精度，不取整）。
+        """
+        if not (target_volume > 1e-12):
+            raise ValueError("target_volume 必须为正，收到 %r" % target_volume)
+
+        hard_lo, hard_hi = math.radians(-30.0), math.radians(30.0)
+        if theta_lo is None:
+            theta_lo = math.radians(-15.0)
+        if theta_hi is None:
+            theta_hi = math.radians(15.0)
+        # 夹入硬限界，避免调用方越界时“扩大”反而收窄区间
+        lo = max(float(theta_lo), hard_lo)
+        hi = min(float(theta_hi), hard_hi)
+        if not (lo < hi):
+            raise ValueError(
+                "theta 限界无效：夹入 [-30°, 30°] 后需要 lo < hi，收到 [%r, %r]"
+                % (theta_lo, theta_hi))
+
+        if volume_eq_tol is None:
+            volume_eq_tol = max(1e-6, 1e-7 * float(target_volume))
+
+        def evaluate(theta):
+            d = self.solve_waterline(phi_rad, target_volume,
+                                     tol=vol_tol, trim_rad=theta)
+            r = self.integrate(phi_rad, d, theta)
+            return d, r, r["xlcb"] - target_lcb, r["volume"] - target_volume
+
+        d_lo, r_lo, res_lo, vol_res_lo = evaluate(lo)
+        d_hi, r_hi, res_hi, vol_res_hi = evaluate(hi)
+        if r_lo["volume"] <= 0.0 or r_hi["volume"] <= 0.0:
+            raise ValueError(
+                "目标体积 %r 在 θ 限界处不可达（积分体积非正）" % target_volume)
+
+        def volume_reachable(search_lo, search_hi):
+            """在 θ 网格上探测 V* 是否可达。超容积时所有点体积残差都很大。"""
+            probes = {search_lo, search_hi, 0.5 * (search_lo + search_hi), 0.0}
+            for k in range(1, 4):
+                probes.add(search_lo + (search_hi - search_lo) * k / 4.0)
+            best = None
+            for th in sorted(probes):
+                _, _, _, vr = evaluate(th)
+                if best is None or abs(vr) < abs(best[1]):
+                    best = (th, vr)
+                if abs(vr) <= volume_eq_tol:
+                    return True
+            return False
+
+        # 体积门闩优先：避免超容积时 LCB 残差数值噪声误报「LCB 不可达」
+        if not volume_reachable(lo, hi):
+            raise ValueError(
+                "目标体积 %r 超出船体可浸没范围或在 θ 限界内不可达："
+                "探测网格上 |∇−V*| 均 > 容差 %g"
+                % (target_volume, volume_eq_tol))
+
+        expand = 0
+        while res_lo * res_hi > 0.0 and expand < 6:
+            expand += 1
+            span = hi - lo
+            new_lo = max(hard_lo, lo - span)
+            new_hi = min(hard_hi, hi + span)
+            if new_lo == lo and new_hi == hi:
+                break
+            lo, hi = new_lo, new_hi
+            d_lo, r_lo, res_lo, vol_res_lo = evaluate(lo)
+            d_hi, r_hi, res_hi, vol_res_hi = evaluate(hi)
+            if not volume_reachable(lo, hi):
+                raise ValueError(
+                    "目标体积 %r 超出船体可浸没范围：扩大后的 θ∈[%.2f°,%.2f°] "
+                    "探测仍不可达（容差 %g）"
+                    % (target_volume, math.degrees(lo), math.degrees(hi),
+                       volume_eq_tol))
+
+        if res_lo * res_hi > 0.0:
+            raise ValueError(
+                "目标 LCB=%.6f 在 θ∈[%.4f°, %.4f°] 内不可达："
+                "残差两端同号（r_lo=%.6e, r_hi=%.6e）。"
+                "检查 target_lcb 是否与 xlcb 同一坐标原点，或放宽 θ 限界。"
+                % (target_lcb, math.degrees(lo), math.degrees(hi), res_lo, res_hi))
+
+        theta_best = 0.5 * (lo + hi)
+        d_best, r_best, res_best, vol_res_best = evaluate(theta_best)
+        outer_iterations = 0
+        converged = False
+        for outer_iterations in range(1, max_outer + 1):
+            if abs(res_best) <= lcb_tol:
+                converged = True
+                break
+            if res_lo * res_best <= 0.0:
+                hi, res_hi = theta_best, res_best
+            else:
+                lo, res_lo = theta_best, res_best
+            if hi - lo < 1e-15:
+                break
+            theta_best = 0.5 * (lo + hi)
+            d_best, r_best, res_best, vol_res_best = evaluate(theta_best)
+
+        if not converged and abs(res_best) > lcb_tol:
+            raise ValueError(
+                "纵倾平衡未达 LCB 容差：|残差|=%.6e > tol=%.6e，"
+                "θ=%.6f°，外层迭代 %d 次"
+                % (abs(res_best), lcb_tol, math.degrees(theta_best), outer_iterations))
+
+        # 体积与 LCB 都必须达标，否则不得返回成功解
+        if abs(vol_res_best) > volume_eq_tol:
+            raise ValueError(
+                "纵倾平衡未达体积容差：|∇−V*|=%.6e > tol=%.6e，"
+                "θ=%.6f°，d=%.6f（目标体积可能超出可浸没范围）"
+                % (abs(vol_res_best), volume_eq_tol,
+                   math.degrees(theta_best), d_best))
+        if abs(res_best) > lcb_tol:
+            raise ValueError(
+                "纵倾平衡未达 LCB 容差：|残差|=%.6e > tol=%.6e，θ=%.6f°"
+                % (abs(res_best), lcb_tol, math.degrees(theta_best)))
+
+        return {
+            "equilibrium_model": "legacy_lcb_only_not_projected_moment_equilibrium",
+            "d_m": d_best,
+            "trim_rad": theta_best,
+            "trim_deg": math.degrees(theta_best),
+            "volume_m3": r_best["volume"],
+            "xlcb_m": r_best["xlcb"],
+            "target_volume_m3": float(target_volume),
+            "target_lcb_m": float(target_lcb),
+            "volume_residual_m3": vol_res_best,
+            "lcb_residual_m": res_best,
+            "volume_eq_tol_m3": float(volume_eq_tol),
+            "outer_iterations": outer_iterations,
+            "phi_rad": float(phi_rad),
+            "hydrostatics": r_best,
+        }
+
+    def bonjean_curve(self, station_index, levels):
+        """Bonjean 曲线：某站位剖面面积随水线高变化（正浮、无横倾）。
+
+        造船业的标准工具，用于快速查任意吃水下的剖面面积。
+        """
+        x, poly = self.stations[station_index]
+        out = []
+        for z in levels:
+            a, _, _ = self.section_under_line(poly, 0.0, z)
+            out.append((z, a))
+        return out
+
+
+def _trapz(ys, xs):
+    total = 0.0
+    for i in range(len(xs) - 1):
+        total += 0.5 * (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i])
+    return total
+
+
+def _line_chord_halfwidth(poly, tan_phi, d, n=200):
+    """Return half the occupied y measure, including coincident boundary edges.
+
+The historical name is retained. Disconnected intervals are summed. At exact
+edge contact this is the geometric intersection, not a one-sided dV/dd.
+"""
+    intervals = waterline_intervals(poly, tan_phi, d)
+    return sum(b-a for a,b in intervals)/2 if intervals else None
+
+
+def waterline_intervals(poly, tan_phi, d):
+    """Return merged occupied y intervals on z = tan_phi*y + d.
+
+    Include coincident boundary edges and preserve gaps in concave sections.
+    The polygon must already be validated by the caller. Contact intervals are
+    geometric intersections, not one-sided volume derivatives.
+    """
+    crossings, intervals = [], []
+    for i, (y0,z0) in enumerate(poly):
+        y1,z1 = poly[(i+1) % len(poly)]
+        f0, f1 = z0-tan_phi*y0-d, z1-tan_phi*y1-d
+        if f0 == 0 and f1 == 0:
+            intervals.append((min(y0,y1),max(y0,y1)))
+        elif (f0 > 0) != (f1 > 0):
+            crossings.append(y0+f0/(f0-f1)*(y1-y0))
+    crossings.sort()
+    intervals.extend(zip(crossings[::2],crossings[1::2]))
+    if not intervals:
+        return []
+    intervals.sort()
+    start,end = intervals[0]
+    merged = []
+    for a,b in intervals[1:]:
+        if a <= end:
+            end = max(end,b)
+        else:
+            merged.append((start,end))
+            start,end = a,b
+    merged.append((start,end))
+    return merged
+
+
+# ---------------------------------------------------------------- 参照船体
+
+
+def make_reference_hull(L, B, T, Cb, Cwp, depth=None, n_stations=161, deck=None,
+                        spacing="cosine", n_section=96):
+    """生成与 L0 形状模型**完全一致**的参照船体，用于交叉验证。
+
+    水线半宽：y(x, T) = (B/2)·f(x),  f(x) = (1−(2x/L)²)^p，p 由 Cwp 反解
+              → 水线面系数恰为 A(p) = Cwp，与 L0 同源
+    剖面成形：y(x, z) = (B/2)·f(x)·(z/T)^(1/q),  z ≤ T
+              q 由 ∇ 反解，使 Cb = Cwp·q/(q+1)
+              → q = Cb / (Cwp − Cb)
+    舷侧：z > T 至甲板为直壁（wall-sided），使大角稳性可算到甲板浸没之后
+
+    站位间距 spacing：
+      "cosine"（默认）—— 站位向两端加密，x = −(L/2)·cos θ。
+        必须用这个：船体两端剖面面积按 s^p（p<1）衰减，端部斜率趋于无穷，
+        均匀站位下梯形积分收敛很慢（实测 161 站仍有 −0.38% 的体积误差）。
+      "uniform" —— 均匀站位，仅用于对比离散误差。
+
+    这样构造出来，L1 的 ∇、Awp、I_T、BM_T 应当与 L0 **数值一致**（同一水线面），
+    只有 KB 会不同 —— L0 用 Morrish 近似，L1 是精确积分。两者的差值就是
+    Morrish 近似在这个船型上的误差，本身就是有价值的结论。
+    """
+    if not (0 < Cb < Cwp <= 1.0):
+        raise ValueError("需要 0 < Cb < Cwp ≤ 1，收到 Cb=%r Cwp=%r" % (Cb, Cwp))
+    if depth is None:
+        depth = T * 1.6            # 甲板高，用于大角稳性
+    if deck is None:
+        deck = depth
+    if spacing not in ("cosine", "uniform"):
+        raise ValueError("spacing 只能是 cosine 或 uniform，收到 %r" % spacing)
+
+    p = _shape_p(Cwp)
+    q = Cb / (Cwp - Cb)
+
+    stations = []
+    for i in range(n_stations):
+        t = i / (n_stations - 1.0)
+        if spacing == "cosine":
+            x = -0.5 * L * math.cos(math.pi * t)      # 两端加密
+        else:
+            x = -L / 2.0 + t * L
+        u = 2.0 * x / L
+        s = 1.0 - u * u
+        if s < 0:
+            s = 0.0
+        f = s ** p
+        half = 0.5 * B * f
+        poly = _section_polygon(half, T, q, deck, n_sec=n_section)
+        stations.append((x, poly))
+    return StationedHull(stations, name="reference-L=%.1f" % L)
+
+
+def _section_polygon(half_beam, T, q, deck, n_sec=24):
+    """按 y = half·min(1, (z/T)^(1/q)) 造剖面（右舷上行 → 甲板 → 左舷下行）。"""
+    pts = []
+    if half_beam <= 1e-9:
+        return [(0.0, 0.0), (0.0, deck), (0.0, deck)]   # 退化截面
+    for j in range(n_sec + 1):
+        z = T * j / n_sec
+        y = half_beam * (z / T) ** (1.0 / q)
+        pts.append((y, z))
+    if deck > T:                     # 直壁段
+        for j in range(1, 5):
+            z = T + (deck - T) * j / 4.0
+            pts.append((half_beam, z))
+    top = pts[-1][1]
+    pts.append((-half_beam, top))    # 甲板从左舷回来
+    for (y, z) in reversed(pts[:-1]):
+        pts.append((-y, z))
+    return pts
+
+
+def _shape_p(cwp):
+    """与 L0 同一套反解：A(p) = √π·Γ(p+1)/(2·Γ(p+3/2)) = Cwp。"""
+    def A(p):
+        return 0.5 * math.sqrt(math.pi) * math.exp(
+            math.lgamma(p + 1.0) - math.lgamma(p + 1.5))
+    lo, hi = 0.0, 100.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if A(mid) > cwp:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < 1e-14:
+            break
+    return 0.5 * (lo + hi)

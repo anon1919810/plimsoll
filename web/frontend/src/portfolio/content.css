@@ -1,0 +1,262 @@
+/* Scoped presentation for the public content pages: the work detail and the
+   About/contact column. Everything here is a supplement to portfolio.css, which
+   keeps the shell, the exhibit and the splash untouched. Shared primitives stay
+   shared on purpose: `.ff-eyebrow` and `.ff-explore-link` are the same words and
+   the same block on the exhibit and here, so this file only adds the new shapes.
+
+   Typography is the shell's: Space Grotesk through `--font-display` for headings
+   and accent labels, Inter through `--font-sans` for everything read. The new
+   micro-label sizes sit between the shell's 9px and 12px, never below 10px. */
+
+/* ---- Work detail --------------------------------------------------------- */
+
+:root[data-formfield-surface='public'] { scrollbar-gutter: stable; }
+/* The dock, not the rail, is what stays with a long page: the two entries and the
+   reading ruler below them move together, so the ruler never scrolls away from
+   the navigation it belongs to. Below the desktop floor the rail falls back to a
+   row under the drawing and the ruler withdraws with it. */
+@media (min-width: 651px) {
+  .ff-rail-dock { position: sticky; top: 32px; }
+}
+.ff-footer a { color: inherit; }
+.ff-footer a:hover { color: var(--ff-accent); }
+/* The detail is the About page's grid, declared from the same two custom
+   properties: twelve tracks, one gutter, one left edge. Nothing here measures a
+   label track in fixed pixels, so the two pages cannot drift apart. */
+.ff-detail { --ff-cols: 12; --ff-col-gap: clamp(18px, 1.9vw, 34px); display: grid; grid-template-columns: repeat(var(--ff-cols), minmax(0, 1fr)); column-gap: var(--ff-col-gap); padding: clamp(28px, 3vw, 52px) 0 90px; max-width: none; }
+.ff-detail > * { grid-column: 1 / -1; }
+/* The shell's own faint field stays behind this page and each block clears the
+   paper under itself, the way the About sections do, so no hairline of that field
+   ever crosses a word or the hero drawing. */
+.ff-detail-back, .ff-detail > .ff-eyebrow, .ff-detail h1, .ff-detail-lede, .ff-detail-section { position: relative; z-index: 1; background: var(--ff-bg); box-shadow: 0 0 0 14px var(--ff-bg); }
+.ff-detail-back { display: inline-flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--ff-muted); padding: 6px 0; transition: color .16s, gap .2s; }
+.ff-detail-back span { font-size: 15px; }
+.ff-detail-back:hover { color: var(--ff-ink); gap: 15px; }
+.ff-detail > .ff-eyebrow { display: block; margin-top: clamp(26px, 3vw, 46px); }
+.ff-detail h1 { font-size: clamp(54px, 7.6vw, 108px); }
+.ff-detail-lede { margin: 22px 0 0; font-size: clamp(16px, 1.35vw, 19px); line-height: 1.65; color: var(--ff-muted); }
+
+/* The hero is the exhibit's own composition at the page's own width, and it
+   carries the same `.ff-art-scene` class, so the 400 ms detail morph has exactly
+   one named node in the document at any moment. Its frame is 1600×700, the same
+   16:7 the exhibit uses, so it is not capped by a max-height that would leave the
+   drawing letterboxed inside its own panel. */
+.ff-detail-hero { position: relative; z-index: 1; margin-top: clamp(30px, 3.4vw, 52px); aspect-ratio: 16 / 7; overflow: hidden; background: var(--ff-panel); }
+.ff-detail-hero .ff-art-scene { background: var(--ff-panel); }
+.ff-detail-hero-note { position: absolute; left: 20px; right: 20px; bottom: 17px; display: block; font-size: 9px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .05em; color: var(--ff-muted); pointer-events: none; }
+
+/* Numbered editorial sections: flat rows and hairline rules, no card wall. Above
+   the shell's own 900 px floor the section repeats the page grid — heading on the
+   low four columns with its number above the title, the definition list on the
+   high eight. Below the floor this is the stacked fallback, unchanged. */
+.ff-detail-section { border-top: 1px solid var(--ff-line); margin-top: clamp(38px, 4vw, 62px); padding-top: 26px; scroll-margin-top: 24px; }
+.ff-detail-section h2 { margin: 0 0 22px; font-family: var(--font-display); font-size: clamp(26px, 2.6vw, 40px); font-weight: 700; line-height: 1.02; letter-spacing: -.025em; }
+.ff-detail-section h2 span { display: block; margin-bottom: 12px; font-family: var(--font-sans); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .12em; color: var(--ff-accent); }
+.ff-detail-rows { margin: 0; }
+.ff-detail-row { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 5px; padding: 17px 0; border-top: 1px solid var(--ff-line); }
+.ff-detail-rows > .ff-detail-row:first-child { border-top: 0; padding-top: 0; }
+.ff-detail-row dt { font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--ff-ink); }
+.ff-detail-row dd { margin: 0; font-size: 14px; line-height: 1.72; color: var(--ff-muted); }
+
+/* ---- Work detail: the same twelve columns as About ------------------------ */
+/* Placed on the page's own tracks, so the detail's left edges are the About
+   page's left edges rather than a second set of measurements that happen to sit
+   near them. */
+@media (min-width: 901px) {
+  .ff-detail h1 { grid-column: 1 / span 8; }
+  .ff-detail-lede { grid-column: 1 / span 6; }
+  .ff-detail-section { display: grid; grid-template-columns: repeat(var(--ff-cols, 12), minmax(0, 1fr)); column-gap: var(--ff-col-gap, 24px); align-items: start; }
+  /* The section title stays at the top of its own section while the reader works
+     through the rows below it, and leaves with the section rather than floating
+     over the next one. It is sticky inside the section's own grid area, so the
+     heading can never outlive the text it names. Same-paper clearance keeps the
+     rule and the number clear of the rows passing under them. */
+  .ff-detail-section h2 { grid-column: 1 / span 4; margin: 0; position: sticky; top: 32px; background: var(--ff-bg); box-shadow: 0 0 0 14px var(--ff-bg); padding-bottom: 6px; }
+  .ff-detail-rows { grid-column: 5 / span 8; }
+  /* A row is one column of type: the label sits above its body and both run the
+     full measure of the eight columns the list was given. A label track beside
+     the body left too little width to read at this size, and no fixed width or
+     extra column is spent on the label. */
+  .ff-detail-row { grid-template-columns: minmax(0, 1fr); row-gap: 10px; padding: 24px 0; }
+  .ff-detail-row dt, .ff-detail-row dd { grid-column: 1 / -1; }
+  .ff-detail-row dt { font-size: 15px; }
+  .ff-detail-row dd { font-size: clamp(18px, 1.3vw, 20px); line-height: 1.65; }
+  .ff-detail h1, .ff-detail h2, .ff-detail-lede, .ff-detail dt, .ff-detail dd { text-align: left; }
+}
+
+/* ---- About and contact --------------------------------------------------- */
+
+/* Twelve-column logic, expressed once so every block shares a left edge. The
+   sections themselves are 12-track grids (pageGeometry.css), and their rules span
+   named column lines rather than percentages, so a change of gutter or count
+   moves everything together. */
+.ff-about { --ff-cols: 12; --ff-col-gap: clamp(18px, 1.9vw, 34px); display: grid; grid-template-columns: repeat(var(--ff-cols), minmax(0, 1fr)); column-gap: var(--ff-col-gap); }
+.ff-about > * { grid-column: 1 / -1; }
+/* Numbered sections keep the same measure and the same rule above them, so the
+   page reads as one column of type with drawings set into it. */
+.ff-about-author { border-top: 1px solid var(--ff-line); margin-top: 46px; padding-top: 26px; }
+.ff-about-author h2, .ff-about-built h2, .ff-contact h2 { margin: 0 0 16px; font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ff-muted); }
+.ff-about-author p { max-width: 590px; margin: 0 0 14px; font-size: 15px; line-height: 1.72; color: var(--ff-muted); }
+.ff-about-work a { display: inline-block; margin-top: 25px; padding: 15px 0; border-bottom: 1px solid var(--ff-ink); font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.ff-about-work a:hover { color: var(--ff-accent); border-color: var(--ff-accent); }
+.ff-about-built { border-top: 1px solid var(--ff-line); margin-top: 52px; padding-top: 26px; }
+.ff-about-rows { margin: 0; }
+.ff-about-row { display: grid; gap: 6px 30px; padding: 14px 0; border-top: 1px solid var(--ff-line); }
+.ff-about-rows > .ff-about-row:first-child { border-top: 0; padding-top: 0; }
+.ff-about-row dt { font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.ff-about-row dd { margin: 0; font-size: 13px; line-height: 1.68; color: var(--ff-muted); }
+
+/* ---- About: the same twelve columns, one left edge ------------------------- */
+/* Every remaining section repeats the page grid and places its label in the low
+   columns with the body on the high ones. Auto-placement puts each item on its
+   own row within the span it was given, so the label stack and the body stack
+   stay in step without a wrapper element. */
+@media (min-width: 901px) {
+  .ff-about-author, .ff-about-work, .ff-about-built, .ff-contact {
+    display: grid; grid-template-columns: repeat(var(--ff-cols, 12), minmax(0, 1fr)); column-gap: var(--ff-col-gap, 24px);
+  }
+  .ff-about-author > h2, .ff-about-built > h2, .ff-contact > h2 { grid-column: 1 / span 4; align-self: start; }
+  .ff-about-author > p, .ff-about-built > .ff-about-rows, .ff-contact > *:not(h2) { grid-column: 5 / span 8; }
+  .ff-about-work > span, .ff-about-work > h2 { grid-column: 1 / span 4; }
+  .ff-about-work > p, .ff-about-work > a { grid-column: 5 / span 7; }
+  .ff-about-work a { align-self: start; justify-self: start; }
+  /* A Built With row is eight page columns wide, so it repeats eight tracks of
+     its own: the label on the first three, the body on the next five. A fixed
+     label width would start the body wherever that width happened to land. */
+  .ff-about-row { grid-template-columns: repeat(8, minmax(0, 1fr)); column-gap: var(--ff-col-gap, 24px); }
+  .ff-about-row dt { grid-column: 1 / span 3; }
+  .ff-about-row dd { grid-column: 4 / span 5; }
+  /* Prose, headings and captions read from their cell's own left edge; only the
+     maths centres, inside its own terms. */
+  .ff-about h2, .ff-about p, .ff-about dt, .ff-about dd, .ff-about figcaption { text-align: left; }
+}
+
+/* Contact: the address is a real mail link and stays usable whatever the
+   clipboard does, so the copy control is a convenience beside it, never the
+   only way to reach anyone. */
+.ff-contact { border-top: 1px solid var(--ff-line); margin-top: 52px; padding-top: 26px; }
+.ff-contact-note { max-width: 520px; margin: 0 0 20px; font-size: 14px; line-height: 1.7; color: var(--ff-muted); }
+.ff-contact-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 26px; }
+.ff-contact-mail { font-family: var(--font-display); font-size: clamp(24px, 2.6vw, 40px); font-weight: 500; letter-spacing: -.015em; border-bottom: 1px solid var(--ff-line); padding-bottom: 3px; word-break: break-all; transition: color .16s, border-color .16s; }
+.ff-contact-mail:hover { color: var(--ff-accent); border-color: var(--ff-accent); }
+.ff-shell .ff-contact-copy { min-height: 44px; padding: 0 16px; border: 1px solid var(--ff-ink); font-size: 11px; font-weight: 600; letter-spacing: .04em; transition: color .15s, border-color .15s; }
+.ff-shell .ff-contact-copy:hover { color: var(--ff-accent); border-color: var(--ff-accent); }
+.ff-contact-profile { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--ff-muted); transition: color .16s, gap .2s; }
+.ff-contact-profile span { font-size: 16px; }
+.ff-contact-profile:hover { color: var(--ff-ink); gap: 17px; }
+.ff-contact-status { margin: 18px 0 0; font-size: 12px; line-height: 1.6; color: var(--ff-muted); }
+.ff-contact-status--failed { color: var(--ff-ink); }
+
+/* ---- Credits ---------------------------------------------------------------- */
+/* The About page's own grid, declared from the same two custom properties, so a
+   block here starts on the same left edge a block on About does and the two pages
+   cannot drift apart. Nothing is measured in fixed pixels, and nothing new is
+   introduced: the same paper, the same rule, the same fonts, the same accent. */
+.ff-credits { --ff-cols: 12; --ff-col-gap: clamp(18px, 1.9vw, 34px); display: grid; grid-template-columns: repeat(var(--ff-cols), minmax(0, 1fr)); column-gap: var(--ff-col-gap); padding: 70px 0 90px; max-width: none; }
+.ff-credits > * { grid-column: 1 / -1; }
+/* Same-paper clearance, the way the About sections and the detail use it: the
+   shell's faint field is stopped by a margin rather than crossing a word. */
+.ff-credits-masthead, .ff-credits-section { background: var(--ff-bg); box-shadow: 0 0 0 14px var(--ff-bg); }
+.ff-credits-masthead h1 { font-family: var(--font-display); font-size: clamp(54px, 7vw, 96px); letter-spacing: -.03em; line-height: .96; font-weight: 700; margin: 32px 0; }
+/* Numbered sections with the detail's own hairline and measure: heading on the low
+   four columns, the list on the high eight, one flat row per entry. No table, no
+   cards, no logo wall, and no decoration that is not the shell's own. The section
+   label stays modest: it names the list beside it, and at this size the longest of
+   them still fits its four-column track rather than reaching into the content. */
+.ff-credits-section { border-top: 1px solid var(--ff-line); margin-top: clamp(46px, 5vw, 92px); padding-top: 26px; scroll-margin-top: 24px; }
+.ff-credits-section h2 { margin: 0 0 22px; font-family: var(--font-display); font-size: clamp(18px, 1.9vw, 22px); font-weight: 700; line-height: 1.12; letter-spacing: -.015em; }
+.ff-credits-section h2 span { display: block; margin-bottom: 10px; font-family: var(--font-sans); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .12em; color: var(--ff-accent); }
+.ff-credits-rows { margin: 0; }
+.ff-credits-row { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 10px; padding: 24px 0; border-top: 1px solid var(--ff-line); }
+.ff-credits-rows > .ff-credits-row:first-child { border-top: 0; padding-top: 0; }
+.ff-credits-row dt { font-size: 15px; font-weight: 600; letter-spacing: .02em; color: var(--ff-ink); }
+/* A name or a label sits above its own description, and both run the full measure
+   of the eight columns the list was given. */
+.ff-credits-row dd { margin: 0; font-size: clamp(18px, 1.3vw, 20px); line-height: 1.65; color: var(--ff-muted); }
+/* The two people this page exists for are carried as display type rather than as
+   row labels: these are the names, and nothing else on the page is sized like them. */
+.ff-credits-section--thanks .ff-credits-row dt { font-family: var(--font-display); font-size: clamp(28px, 2.6vw, 40px); font-weight: 700; line-height: 1.06; letter-spacing: -.025em; }
+/* An official page, or the licence file as shipped, read as what it is. */
+.ff-credits-link, .ff-credits-licence-file { color: var(--ff-ink); border-bottom: 1px solid var(--ff-line); padding-bottom: 3px; transition: color .16s, border-color .16s; }
+.ff-credits-link:hover, .ff-credits-licence-file:hover { color: var(--ff-accent); border-color: var(--ff-accent); }
+.ff-credits-licence { display: block; margin-bottom: 10px; }
+.ff-credits-licence-file { display: inline-block; margin-right: 20px; font-size: clamp(14px, 1.05vw, 16px); }
+
+@media (min-width: 901px) {
+  .ff-credits-section { display: grid; grid-template-columns: repeat(var(--ff-cols, 12), minmax(0, 1fr)); column-gap: var(--ff-col-gap, 24px); align-items: start; }
+  /* Sticky inside the section's own grid area, as the detail's heading is: it can
+     never outlive the list it names, and it leaves with the section. */
+  .ff-credits-section h2 { grid-column: 1 / span 4; margin: 0; position: sticky; top: 32px; padding-bottom: 6px; }
+  .ff-credits-rows { grid-column: 5 / span 8; }
+  .ff-credits h1, .ff-credits h2, .ff-credits dt, .ff-credits dd { text-align: left; }
+}
+
+/* ---- Narrow-width fallback ----------------------------------------------- */
+/* Same rule as the shell: desktop composition holds above 650px, and below it
+   the existing single-column fallback applies. This is a floor, not a redesign. */
+@media (max-width: 900px) {
+  .ff-detail-row, .ff-about-row { grid-template-columns: minmax(0, 1fr); }
+  .ff-detail-row dt, .ff-about-row dt, .ff-credits-row dt { color: var(--ff-muted); }
+}
+@media (max-width: 650px) {
+  .ff-about, .ff-detail, .ff-credits { grid-template-columns: minmax(0, 1fr); }
+  .ff-detail { padding-bottom: 60px; }
+  .ff-credits { padding: 45px 0 60px; }
+  .ff-detail-hero { aspect-ratio: 16 / 9; }
+  .ff-detail-hero-note { left: 13px; right: 13px; bottom: 12px; font-size: 8px; }
+  .ff-contact-actions { gap: 12px 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ff-detail *, .ff-about *, .ff-contact *, .ff-credits * { transition: none !important; }
+}
+
+/* ---- Chinese type on the content pages -------------------------------------
+   The same rule the shell applies, to the same elements: no negative tracking,
+   and line boxes opened to what a full-em glyph needs. Display headings gain the
+   most — `.96` and `1.02` line boxes are cut from Latin metrics and squeeze the
+   ascenders and descenders of a Han character together — and running prose gains
+   a little, because CJK reads by the square of the glyph rather than by the
+   word's outline.
+
+   Everything else is the same page: same columns, same left edge, same sizes,
+   same rules, same accent, same English equations and citations. */
+/* Credits' masthead only. The detail's H1 is the Latin word `Plimsoll` in both
+   languages and keeps its own display tracking and line box. */
+.ff-shell[data-ff-lang='zh-CN'] .ff-credits-masthead h1 { letter-spacing: 0; line-height: 1.16; }
+.ff-shell[data-ff-lang='zh-CN'] .ff-detail-section h2,
+.ff-shell[data-ff-lang='zh-CN'] .ff-credits-section h2,
+.ff-shell[data-ff-lang='zh-CN'] .ff-about-work h2 { letter-spacing: 0; line-height: 1.3; }
+.ff-shell[data-ff-lang='zh-CN'] .ff-about-author h2,
+.ff-shell[data-ff-lang='zh-CN'] .ff-about-built h2,
+.ff-shell[data-ff-lang='zh-CN'] .ff-contact h2 { letter-spacing: .04em; line-height: 1.5; }
+.ff-shell[data-ff-lang='zh-CN'] :is(.ff-detail-row dd, .ff-about-author p, .ff-about-work p, .ff-about-row dd, .ff-about-intro > p, .ff-credits-row dd, .ff-contact-note, .ff-detail-lede, .ff-study-note, figcaption) { line-height: 1.85; }
+/* A Latin span *inside* a Chinese sentence is untouched by all of the above: every
+   rule names the element it sets, never a descendant, so a book title or a
+   person's name inside a translated paragraph keeps the metrics the Latin rules
+   gave it. */
+
+/* ---- Home -> detail artwork morph ---------------------------------------- */
+/* Exactly one named group, and only while the controller owns the transition.
+   The home stays mounted, so the rules are scoped by the section that is
+   actually showing: naming a hidden node as well would give two elements the
+   same `view-transition-name` and the browser would drop the whole cut. The
+   400 ms matches TRANSITION_MS.detail in transitions.ts, the single source of
+   truth for the number. */
+:root[data-ff-transition='detail'] .ff-home:not([hidden]) .ff-art-scene,
+:root[data-ff-transition='detail'] .ff-detail-slot:not([hidden]) .ff-art-scene { view-transition-name: ff-artwork; }
+:root[data-ff-transition='detail']::view-transition-group(ff-artwork) { animation-duration: 400ms; animation-timing-function: cubic-bezier(.22,1,.36,1); }
+:root[data-ff-transition='detail'] .ff-detail-slot:not([hidden]) .ff-detail-body { view-transition-name: ff-detail-body; }
+/* The body group exists only on the detail, so there is nothing to morph it
+   from; its new snapshot is what moves, and it moves the same 400 ms. */
+:root[data-ff-transition='detail']::view-transition-old(ff-artwork) { animation: none; opacity: 1; mix-blend-mode: normal; }
+:root[data-ff-transition='detail']::view-transition-new(ff-artwork) { animation: none; opacity: 1; mix-blend-mode: normal; }
+:root[data-ff-transition='detail']::view-transition-new(ff-detail-body) { animation: ff-detail-rise 400ms cubic-bezier(.22,1,.36,1) both; }
+:root[data-ff-transition='detail']::view-transition-old(ff-detail-body) { animation: ff-detail-exit 140ms linear both; }
+@keyframes ff-detail-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes ff-detail-exit { from { opacity: 1; } to { opacity: 0; } }
+/* The persistent chrome must not move or cross-fade: both root snapshots stay
+   still and the new one simply covers the old, exactly as the sheet cut does. */
+:root[data-ff-transition='detail']::view-transition-old(root),
+:root[data-ff-transition='detail']::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+:root[data-ff-transition='detail']::view-transition-old(root) { z-index: 1; }
+:root[data-ff-transition='detail']::view-transition-new(root) { z-index: 2; }

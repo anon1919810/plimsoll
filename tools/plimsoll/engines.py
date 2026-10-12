@@ -1,0 +1,402 @@
+"""Plimsoll · Engines 页（v0：主机/锅炉/燃料/续航 —— **阻力模型不在本模块**）
+
+SPS Engines 页（COVERAGE.md §2.6）：Max/Cruise speed、轴数、**Friction/Wave resistance**、
+Power (hp/kW)（输出）、锅炉/主机型式、Range、%Coal、Engine factor（输入）、
+Engine weight / Bunker / Displacement factor（输出）。
+
+Plimsoll 的做法（诚实记录）
+---------------------------
+- **有源就给**：轴数、主机/锅炉型式、设计/试航功率、燃料（煤/油）、续航。
+  shp → kW 用 `1 hp = 745.7 W`（机械马力国际定义，精确）。
+- **量级校核（estimate）**：海军部系数 `C = Δ^(2/3)·V³ / P`（Δ 吨、V 节、P shp）
+  —— 经典经验式，只用来判断功率–航速是否自洽，**不当设计依据**；
+  同时给出最大航速对应的 Froude 数。
+- **明确不做**：Friction/Wave resistance、Engine weight、Displacement factor
+  —— 阻力需要 Holtrop-Mennen / Taylor（PLAN **7.3**，独立项），主机重量无来源。
+  本模块只在 warnings 里点名，**不估算、不冒充**。
+- Engine factor（SPS 输入）是 SPS 自有的经验系数，无公开定义 → 不做。
+
+设计纪律（承 SPEC §2，含 §2.7 通用性）：纯函数 dict→dict；输出带 formula/source/estimate；
+核心不做四舍五入；**不出现任何具体船只的常量**。
+"""
+
+from __future__ import annotations
+
+import math
+try:
+    from ._provenance import combine_estimates
+except ImportError:
+    from _provenance import combine_estimates
+
+if __package__:
+    from . import units
+else:
+    import units
+
+SCHEMA = "plimsoll-engines-1"
+HP_TO_KW = 0.7457          # 1 hp = 745.7 W（机械马力国际定义）
+KNOT_MPS = 0.514444        # 1 kn = 0.514444 m/s
+G = 9.81
+
+
+def _finite(v, what, positive=False):
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        raise ValueError("%s 必须是有限数值，收到 %r" % (what, v))
+    try:
+        number = float(v)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("%s 超出支持的数值范围" % what) from exc
+    if not math.isfinite(number):
+        raise ValueError("%s 必须是有限数值，收到 %r" % (what, v))
+    if positive and number <= 0:
+        raise ValueError("%s 必须为正，收到 %r" % (what, v))
+    if number < 0:
+        raise ValueError("%s 不能为负，收到 %r" % (what, v))
+    return number
+
+
+def _int_positive(v, what):
+    if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+        raise ValueError("%s 必须为正整数，收到 %r" % (what, v))
+    return v
+
+
+def _T(trace, key, value, formula, source, estimate=False):
+    trace.append({"key": key, "value": value, "formula": formula,
+                  "source": source, "estimate": estimate})
+
+
+def _D(diagnostics, code, severity, path, message, blocking=False):
+    diagnostics.append({"code": code, "severity": severity, "path": path,
+                        "message": message, "blocking": blocking})
+
+
+def _admiralty_coefficient(displacement, speed, power):
+    """Preserve representable C when intermediate powers exceed float range."""
+    try:
+        ordinary = displacement ** (2.0 / 3.0) * speed ** 3 / power
+        if 0 < ordinary < math.inf:
+            return ordinary
+    except OverflowError:
+        pass
+    d_fraction, d_exponent = math.frexp(displacement)
+    v_fraction, v_exponent = math.frexp(speed)
+    p_fraction, p_exponent = math.frexp(power)
+    d_power, remainder = divmod(2 * d_exponent, 3)
+    fraction = (d_fraction ** (2.0 / 3.0) * v_fraction ** 3 / p_fraction
+                * 2.0 ** (remainder / 3.0))
+    try:
+        return math.ldexp(fraction, d_power + 3 * v_exponent - p_exponent)
+    except OverflowError as error:
+        raise ValueError('admiralty_coeff is outside the numeric range') from error
+
+
+def _steady_endurance(case, coal, oil, diagnostics, trace):
+    scenario = case.get("endurance_scenario")
+    if scenario is None:
+        _D(diagnostics, "engines.endurance_inputs_missing", "info", "$.endurance_scenario",
+           "No steady-consumption scenario was supplied; computed endurance is unavailable.")
+        return None
+    if not isinstance(scenario, dict):
+        raise ValueError("endurance_scenario 必须是对象")
+    if scenario.get("method") != "steady_simultaneous_fuel_consumption":
+        raise ValueError("endurance_scenario.method 必须是 steady_simultaneous_fuel_consumption")
+    source = scenario.get("source")
+    if not isinstance(source, str) or not source:
+        raise ValueError("endurance_scenario.source 必须是非空字符串")
+    estimate = scenario.get("estimate")
+    if not isinstance(estimate, bool):
+        raise ValueError("endurance_scenario.estimate 必须是布尔值")
+    speed = _finite(scenario.get("speed_kn"), "endurance_scenario.speed_kn", positive=True)
+    power = _finite(scenario.get("power_kw"), "endurance_scenario.power_kw", positive=True)
+    fuels = scenario.get("fuels")
+    if not isinstance(fuels, dict):
+        raise ValueError("endurance_scenario.fuels 必须是对象")
+
+    rows = {}
+    durations = []
+    contributing_estimates = [estimate]
+    fuel_sources = {}
+    incomplete = False
+    for fuel_name, mass in (("coal", coal), ("oil", oil)):
+        config = fuels.get(fuel_name)
+        if not isinstance(config, dict) or not isinstance(config.get("required"), bool):
+            raise ValueError("endurance_scenario.fuels.%s 必须声明 required" % fuel_name)
+        rate_raw = config.get("burn_t_per_day")
+        if rate_raw is None:
+            if config["required"]:
+                incomplete = True
+                _D(diagnostics, "engines.endurance_input_unknown", "error",
+                   "$.endurance_scenario.fuels.%s.burn_t_per_day" % fuel_name,
+                   "Required per-fuel consumption is unknown; endurance is unavailable.", True)
+            rows[fuel_name] = {"status": "unknown" if config["required"] else "unused"}
+            continue
+        rate = _finite(rate_raw, "%s burn_t_per_day" % fuel_name)
+        if rate == 0.0:
+            rows[fuel_name] = {"status": "unused", "burn_t_per_day": 0.0}
+            continue
+        if not config["required"]:
+            raise ValueError(
+                "endurance_scenario.fuels.%s positive burn requires required=true" % fuel_name
+            )
+        if mass is None:
+            incomplete = True
+            _D(diagnostics, "engines.endurance_input_unknown", "error", "$.%s_t" % fuel_name,
+               "A consumed fuel mass is unknown; endurance is unavailable.", True)
+            rows[fuel_name] = {"status": "unknown", "burn_t_per_day": rate}
+            continue
+        reserve_raw = config.get("reserve_t")
+        if reserve_raw is None:
+            incomplete = True
+            _D(diagnostics, "engines.endurance_input_unknown", "error",
+               "$.endurance_scenario.fuels.%s.reserve_t" % fuel_name,
+               "A consumed fuel reserve is unknown; endurance is unavailable.", True)
+            rows[fuel_name] = {"status": "unknown", "burn_t_per_day": rate}
+            continue
+        reserve = _finite(reserve_raw, "%s reserve_t" % fuel_name)
+        if reserve > mass:
+            raise ValueError("%s reserve_t 不能超过已知燃料质量" % fuel_name)
+        usable = mass - reserve
+        days = _finite(usable / rate, 'derived %s endurance days' % fuel_name)
+        rows[fuel_name] = {
+            "status": "consumed",
+            "mass_t": mass,
+            "reserve_t": reserve,
+            "usable_t": usable,
+            "burn_t_per_day": rate,
+            "days": days,
+        }
+        durations.append((days, fuel_name))
+        contributing_estimates.append(case.get(fuel_name+'_estimate', case.get('fuel_estimate', False)))
+        fuel_sources[fuel_name] = case.get(fuel_name+'_source', case.get('fuel_source'))
+    if incomplete or not durations:
+        if not durations and not incomplete:
+            _D(diagnostics, "engines.endurance_no_consumed_stream", "warning",
+               "$.endurance_scenario.fuels",
+               "All declared burn rates are zero; no finite endurance is calculated.")
+        return None
+    days, limiting_fuel = min(durations)
+    hours = _finite(days * 24.0, 'derived endurance hours')
+    range_nm = _finite(hours * speed, 'derived endurance range_nm')
+    estimate = combine_estimates(contributing_estimates)
+    dependency_sources = {'scenario': source, 'fuel_masses': fuel_sources}
+    result = {
+        "method": "steady_simultaneous_fuel_consumption",
+        "hours": hours,
+        "range_nm": range_nm,
+        "speed_kn": speed,
+        "power_kw": power,
+        "limiting_fuel": limiting_fuel,
+        "fuels": rows,
+        "source": source,
+        "estimate": estimate,
+        "input_sources": dependency_sources,
+        "assumption": "Fixed operating point; simultaneous declared per-fuel burn rates; first required fuel exhausted limits endurance.",
+    }
+    _T(trace, "steady_endurance_hours", hours,
+       "min((fuel mass - reserve) / per-fuel burn rate) × 24",
+       dependency_sources, estimate)
+    _T(trace, "steady_endurance_range_nm", result["range_nm"],
+       "range_nm = hours × speed_kn", dependency_sources, estimate)
+    return result
+
+
+def compute(case: dict) -> dict:
+    """Engines 案例 → 功率换算、燃料构成、续航、量级校核。"""
+    trace: list[dict] = []
+    warnings: list[str] = []
+    diagnostics: list[dict] = []
+
+    if case.get("schema") != SCHEMA:
+        raise ValueError("schema 必须是 %s，收到 %r" % (SCHEMA, case.get("schema")))
+
+    shafts = _int_positive(case.get("shafts"), "shafts")
+    disp = case.get('displacement_normal_t')
+    lwl = case.get('lwl_m')
+    disp = _finite(disp, 'displacement_normal_t', positive=True) if disp is not None else None
+    lwl = _finite(lwl, 'lwl_m', positive=True) if lwl is not None else None
+    _T(trace, "shafts", shafts, "输入", case.get("shafts_source", "无来源"), case.get('shafts_estimate', False))
+
+    # ---------------- 功率（每个导出量只算一次：trace 与 values 共用同一变量）
+    conversion_method = case.get("power_conversion_method", "legacy_rounded_0.7457_kw_per_shp")
+    if conversion_method not in ("legacy_rounded_0.7457_kw_per_shp",
+                                  "international_mechanical_hp_precise"):
+        raise ValueError("未知 power_conversion_method %r" % conversion_method)
+    speed_conversion_method = case.get(
+        "speed_conversion_method", "legacy_rounded_0.514444_m_s_per_kn"
+    )
+    if speed_conversion_method not in (
+        "legacy_rounded_0.514444_m_s_per_kn", "international_knot_exact"
+    ):
+        raise ValueError("未知 speed_conversion_method %r" % speed_conversion_method)
+    p_design = case.get("power_design_shp")
+    p_trial = case.get("power_trial_shp")
+    p_design_kw = p_trial_kw = None
+    for key, val, src_key in (("power_design_shp", p_design, "power_design_source"),
+                              ("power_trial_shp", p_trial, "power_trial_source")):
+        if val is None:
+            warnings.append("%s 未提供：置空。" % key)
+            continue
+        v = _finite(val, key, positive=True)
+        kw = (v * HP_TO_KW if conversion_method == "legacy_rounded_0.7457_kw_per_shp"
+              else units.convert(v, "shp", "kW"))
+        if key == "power_design_shp":
+            p_design, p_design_kw = v, kw
+        else:
+            p_trial, p_trial_kw = v, kw
+        estimate = case.get(key.replace('_shp', '')+'_estimate', False)
+        _T(trace, key, v, "输入", case.get(src_key, "无来源"), estimate)
+        if conversion_method == "legacy_rounded_0.7457_kw_per_shp":
+            _T(trace, key.replace("_shp", "_kw"), kw, "kW = shp × 0.7457",
+               {'input': case.get(src_key), 'conversion': 'legacy rounded compatibility constant'}, estimate)
+        else:
+            _T(trace, key.replace("_shp", "_kw"), kw,
+               "units.convert(shp, 'shp', 'kW')",
+               {'input': case.get(src_key), 'conversion': 'international mechanical horsepower = 0.7456998715822702 kW'}, estimate)
+
+    # ---------------- 航速
+    v_max = case.get("max_speed_kn")
+    v_cruise = case.get("cruise_speed_kn")
+    for key in ("max_speed_kn", "cruise_speed_kn"):
+        val = v_max if key == "max_speed_kn" else v_cruise
+        if val is None:
+            warnings.append("%s 未提供：置空（巡航速度常无来源）。" % key)
+            continue
+        vv = _finite(val, key, positive=True)
+        if key == "max_speed_kn":
+            v_max = vv
+        else:
+            v_cruise = vv
+        _T(trace, key, vv, "输入",
+           case.get(key.replace("_kn", "_source"), "无来源"), case.get(key.replace('_kn', '_estimate'), False))
+
+    # ---------------- 燃料
+    coal = case.get("coal_t")
+    oil = case.get("oil_t")
+    coal = _finite(coal, "coal_t") if coal is not None else None
+    oil = _finite(oil, "oil_t") if oil is not None else None
+    fuel_total = None
+    fuel_known_subtotal = (None if coal is None and oil is None
+                           else sum(value for value in (coal, oil) if value is not None))
+    if fuel_known_subtotal is not None:
+        fuel_known_subtotal = _finite(fuel_known_subtotal, 'derived bunker subtotal')
+    pct_coal = None
+    fuel_estimate = combine_estimates(case.get(name+'_estimate', case.get('fuel_estimate', False))
+                                      for name in ('coal', 'oil'))
+    if coal is None and oil is None:
+        warnings.append("燃料（coal_t / oil_t）均未给：Bunker 置空。")
+        _D(diagnostics, "engines.bunker_unknown", "warning", "$",
+           "Both coal_t and oil_t are unknown; bunker total is unavailable.")
+    elif coal is None or oil is None:
+        warnings.append("仅部分燃料质量已知：Bunker 总量置空，另报已知小计。")
+        _D(diagnostics, "engines.bunker_partial", "warning", "$",
+           "Only one fuel mass is known; bunker total and percentage are unavailable.")
+        known_name = "coal_t" if coal is not None else "oil_t"
+        _T(trace, "bunker_known_subtotal_t", fuel_known_subtotal,
+           "sum of known fuel masses only", case.get("fuel_source", "无来源"), True)
+    else:
+        fuel_total = fuel_known_subtotal
+        _T(trace, "bunker_total_t", fuel_total, "Bunker = 煤 + 油",
+           case.get("fuel_source", "无来源"), fuel_estimate)
+        if coal is not None and fuel_total > 0:
+            pct_coal = 100.0 * (coal / fuel_total)
+            _T(trace, "pct_coal", pct_coal, "%Coal = 煤 / (煤 + 油) ×100",
+               case.get("fuel_source", "无来源"), fuel_estimate)
+        else:
+            pct_coal = None
+    for name, mass in (('coal', coal), ('oil', oil)):
+        if mass is not None:
+            _T(trace, name+'_t', mass, '输入', case.get(name+'_source', case.get('fuel_source', '无来源')),
+               case.get(name+'_estimate', case.get('fuel_estimate', False)))
+
+    # ---------------- 续航
+    rng = case.get("range_nm")
+    rng_kn = case.get("range_at_speed_kn")
+    if rng_kn is not None:
+        rng_kn = _finite(rng_kn, "range_at_speed_kn", positive=True)
+    if rng is None:
+        warnings.append("range_nm 未提供：续航置空。")
+    else:
+        rng = _finite(rng, "range_nm", positive=True)
+        _T(trace, "range_nm", rng, "historical/comparison input",
+           case.get("range_source", "无来源"))
+        if rng_kn is None:
+            warnings.append("range_at_speed_kn 未提供：续航未注明对应航速，可比性差。")
+
+    steady_endurance = _steady_endurance(case, coal, oil, diagnostics, trace)
+
+    # ---------------- 量级校核（estimate）
+    adm = None
+    if disp and v_max and (p_design or p_trial):
+        p = p_design or p_trial
+        adm = _admiralty_coefficient(disp, v_max, p)
+        adm = _finite(adm, 'derived admiralty_coeff', positive=True)
+        _T(trace, "admiralty_coeff", adm, "C = Δ^(2/3)·V³ / P（Δ 吨、V 节、P shp）",
+           "海军部系数经验式，仅作功率–航速量级校核", True)
+        warnings.append("海军部系数 %.0f 只是量级校核（经验式，随船型差异极大），"
+                        "不能当设计依据。" % adm)
+    if v_max and disp and lwl:
+        v_mps = (float(v_max) * KNOT_MPS
+                 if speed_conversion_method == "legacy_rounded_0.514444_m_s_per_kn"
+                 else units.convert(float(v_max), "kn", "m_s"))
+        fn = _finite(v_mps / (math.sqrt(G)*math.sqrt(lwl)), 'derived froude_at_max', positive=True)
+        _T(trace, "froude_at_max", fn, "Fn = V(m/s) / √(g·Lwl)", "最大航速对应的 Froude 数", True)
+
+    # ---------------- 明确不做
+    warnings.append("Friction/Wave resistance 由独立 resistance.py（Taylor-Gertler）或 "
+                    "holtrop.py（Holtrop-Mennen 1982）提供；本模块不自动选择阻力方法。")
+    if case.get("engine_weight_t") is None:
+        warnings.append("Engine weight 未提供：主机重量无来源，置空（不估算）。")
+    else:
+        _T(trace, "engine_weight_t", _finite(case["engine_weight_t"], "engine_weight_t",
+                                             positive=True), "输入",
+           case.get("engine_weight_source", "无来源"), case.get('engine_weight_estimate', False))
+
+    values = {
+        "shafts": shafts,
+        "power_design_shp": p_design, "power_trial_shp": p_trial,
+        "power_design_kw": p_design_kw, "power_trial_kw": p_trial_kw,
+        "max_speed_kn": v_max, "cruise_speed_kn": v_cruise,
+        "coal_t": coal, "oil_t": oil, "bunker_total_t": fuel_total,
+        "bunker_known_subtotal_t": fuel_known_subtotal,
+        "pct_coal": pct_coal,
+        "range_nm": rng, "range_at_speed_kn": rng_kn,
+        "steady_endurance": steady_endurance,
+        "admiralty_coeff": adm,
+        "engine_weight_t": case.get("engine_weight_t"),
+    }
+    return {"values": values, "trace": trace, "warnings": warnings,
+            "diagnostics": diagnostics,
+            "methods": {"power_conversion": conversion_method,
+                        "speed_conversion": speed_conversion_method,
+                        "endurance": (steady_endurance or {}).get("method")}}
+
+
+def sps_view(result: dict, resistance: dict | None = None) -> dict:
+    """compute() 结果 → SPS Engines 页视图（缺项保持 None）。
+
+    `resistance`（可选）：来自 `resistance.py` 的结果快照
+    `{"speed_kn":…, "friction_kN":…, "residual_kN":…}` —— 给了就填 Friction/Wave resistance
+    两格（**值来自阻力模块，不是本页算的**）；不给仍是 None（诚实留白）。
+    """
+    v = result["values"]
+    fr = rr = None
+    if resistance:
+        fr = resistance.get("friction_kN")
+        rr = resistance.get("residual_kN")
+    return {
+        "max_speed_kn": v["max_speed_kn"], "cruise_speed_kn": v["cruise_speed_kn"],
+        "shafts": v["shafts"],
+        "power_hp": v["power_design_shp"], "power_kw": v["power_design_kw"],
+        "friction_resistance_kN": fr, "wave_resistance_kN": rr,
+        "resistance_at_speed_kn": (resistance or {}).get("speed_kn"),
+        "range_nm": v["range_nm"], "pct_coal": v["pct_coal"],
+        "engine_weight_t": v["engine_weight_t"], "bunker_t": v["bunker_total_t"],
+        "_not_implemented": (["friction_resistance"] if fr is None else []) +
+                            (["wave_resistance"] if rr is None else []) + ["displacement_factor"],
+        "warnings": list(result.get("warnings", [])) + list((resistance or {}).get("warnings", [])),
+        "_resistance_estimate": (resistance or {}).get("estimate", True) if resistance else None,
+        "_resistance_trace": (resistance or {}).get("trace", []),
+        "_resistance_source": ("resistance.py（Taylor-Gertler + Schoenherr）"
+                               if resistance else None),
+    }

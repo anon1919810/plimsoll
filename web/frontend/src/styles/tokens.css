@@ -1,0 +1,96 @@
+/* Archivo, upright, normal width, variable 400-900, Latin subset only.
+   Self-hosted from the official Omnibus-Type release via Google Fonts; SIL OFL 1.1.
+   Provenance, checksums and licence: public/fonts/README.md. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400 900;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/archivo-latin-var.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Inter (variable 100-900) — public-shell body text; Space Grotesk (variable
+   300-700) — public-shell display headings. Both SIL OFL 1.1, Latin subset only.
+   Provenance, checksums and licences: public/fonts/README.md. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/inter-var-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-var-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* One family for the public shell, its metadata, the splash, the tool return
+     bar and the application's own Latin UI. The Chinese system sans fallbacks
+     stay behind it, so the workbench text keeps rendering exactly as before. */
+  --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-sans);
+  color: #182a34;
+  background: #f5f7f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --canvas: #f5f7f8;
+  --surface: #ffffff;
+  --surface-soft: #f8fafb;
+  --surface-tint: #eef4f6;
+  --ink: #182a34;
+  --muted: #667985;
+  --faint: #94a4ad;
+  --line: #dce5e9;
+  --line-strong: #c8d5dc;
+  --accent: #286d86;
+  --accent-hover: #18556c;
+  --accent-soft: #e8f1f4;
+  --warning: #9b6025;
+  --warning-soft: #fcf3e8;
+  --error: #a34242;
+  --error-soft: #fff0ef;
+  --shadow: 0 18px 55px rgba(25, 58, 73, .07);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  color: #e3edf1;
+  background: #101b22;
+  --canvas: #101b22;
+  --surface: #172630;
+  --surface-soft: #1b2c37;
+  --surface-tint: #203743;
+  --ink: #e3edf1;
+  --muted: #a6b8c1;
+  --faint: #78939f;
+  --line: #2d4350;
+  --line-strong: #3c5966;
+  --accent: #78bacd;
+  --accent-hover: #a1d2df;
+  --accent-soft: #193e4b;
+  --warning: #e3ae70;
+  --warning-soft: #3a2a21;
+  --error: #e9a3a0;
+  --error-soft: #402b2d;
+  --shadow: 0 18px 55px rgba(0, 0, 0, .19);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: var(--canvas); color: var(--ink); }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .54; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+::selection { background: var(--accent-soft); color: var(--ink); }

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plimsoll"
+version = "0.1.0"
+description = "Parametric naval-architecture calculation core and command-line interface"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Yang Rui" }]
+keywords = ["naval-architecture", "hydrostatics", "stability", "flooding", "damage", "resistance"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+# The calculation core imports only the standard library.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+plimsoll = "plimsoll.cli:main"
+
+[project.urls]
+Homepage = "https://www.ydm-xjx.com.cn"
+
+# The package lives under tools/, which is why the package directory is remapped
+# rather than the sources being moved: the test runner, the CLI documents and the
+# frozen case paths all assume `tools/plimsoll/...`.
+[tool.setuptools]
+package-dir = { "" = "tools" }
+
+[tool.setuptools.packages.find]
+where = ["tools"]
+include = ["plimsoll*"]

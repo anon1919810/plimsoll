@@ -1,0 +1,174 @@
+# Plimsoll production vhost TEMPLATE.
+#
+# Render every __PLIMSOLL_*__ token before installing (see
+# docs/plimsoll-1.0/web-production-operations.md). Tokens:
+#   __PLIMSOLL_SERVER_NAME__ 119.91.211.156 or the DNS name
+#   __PLIMSOLL_TLS_CERT__    /etc/letsencrypt/live/plimsoll-ip/fullchain.pem
+#   __PLIMSOLL_TLS_KEY__      /etc/letsencrypt/live/plimsoll-ip/privkey.pem
+#   __PLIMSOLL_ACME_ROOT__    /var/www/acme
+#
+# This file replaces exactly ONE already-named old site (backup first, inventory with
+# `nginx -T | grep -n server_name`). Do not install it as an additional server block
+# next to the old site, and do not install the HTTPS block before the certificate files
+# exist: nginx -t will fail and the old site stays offline.
+
+upstream plimsoll_api {
+    server 127.0.0.1:18000;
+    keepalive 8;
+}
+
+# Port 80: ACME HTTP-01 only, everything else jumps to the canonical https origin.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __PLIMSOLL_SERVER_NAME__;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root __PLIMSOLL_ACME_ROOT__;
+        default_type "text/plain";
+    }
+
+    # Canonical target is the rendered server_name, never the request Host header:
+    # $host would let an unknown Host redirect visitors to an attacker's domain.
+    location / {
+        return 308 https://__PLIMSOLL_SERVER_NAME__$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __PLIMSOLL_SERVER_NAME__;
+
+    ssl_certificate     __PLIMSOLL_TLS_CERT__;
+    ssl_certificate_key __PLIMSOLL_TLS_KEY__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:PlimsollTLS:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    root /opt/plimsoll/current/web/frontend/dist;
+    index index.html;
+    client_max_body_size 8m;
+
+    # Static compression, using the gzip module this image already ships.
+    # No brotli is configured: that module is not built in here, and claiming it
+    # would mean shipping something that may not exist. `gzip_vary on` makes every
+    # negotiated response carry `Vary: Accept-Encoding`, so a shared cache cannot
+    # hand a compressed body to a client that did not ask for one.
+    # text/html is always compressed by nginx and must not be repeated here.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_types
+        application/javascript
+        application/json
+        application/manifest+json
+        application/wasm
+        application/xml
+        image/svg+xml
+        text/css
+        text/javascript
+        text/plain
+        text/xml;
+
+    # Keep WAV transport unchanged; audio is fetched only after interaction.
+    # WOFF2 is already compressed. Text assets use gzip above.
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy same-origin always;
+
+    # Optional coarse limits. Enable only after installing rate-limit-zones.conf:
+    # include /etc/nginx/conf.d/plimsoll-rate-limit-zones.conf;
+
+    # API: keep the /api prefix (proxy_pass has no trailing URI) and overwrite
+    # X-Forwarded-For with the real peer address.
+    location /api/ {
+        # limit_req zone=plimsoll_general burst=20 nodelay;
+        proxy_pass http://127.0.0.1:18000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    # Unknown /api paths must stay API 404s, never the SPA shell.
+    location = /api {
+        return 308 /api/;
+    }
+
+    # Hashed build assets are immutable — but only when they exist.
+    # `add_header ... always` attaches the header to *every* response from this
+    # location, including the 404 that `try_files $uri =404` raises. That is
+    # exactly what production was doing: /assets/no-such-bundle.js answered 404
+    # and still advertised `max-age=31536000, immutable`, so a stale document
+    # asking for an old bundle name cached the miss for a year and the file
+    # stayed broken. Without `always` nginx adds the header only to 2xx/3xx
+    # responses, so a hit is immutable and a miss carries no lifetime at all.
+    # The security headers keep `always` and are repeated here because a
+    # location that declares any `add_header` stops inheriting the server's.
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy same-origin always;
+    }
+
+    # Unhashed static: the fonts, the audition WAVs and the reference sheets.
+    # These filenames do not change when their bytes do, so they must not be
+    # cached for a year. One hour with revalidation keeps a normal visit off the
+    # network entirely while a redeploy is picked up on the next reload. As
+    # above, the header carries no `always`, so a miss is not given a lifetime.
+    location ~* ^/(fonts|audio|portfolio)/ {
+        # A local types table replaces inherited mappings. List all formats in
+        # these static directories; leave the shell and hashed assets inherited.
+        types {
+            audio/wav wav;
+            font/woff2 woff2;
+            font/woff woff;
+            image/png png;
+            image/jpeg jpg jpeg;
+            image/webp webp;
+            image/svg+xml svg;
+            image/gif gif;
+            image/avif avif;
+            application/json json;
+            text/plain txt md;
+        }
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=3600, must-revalidate";
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy same-origin always;
+    }
+
+    # The shell must always be revalidated so a new release is picked up.
+    # The security headers are repeated for the same reason as above: declaring
+    # any add_header here stops this location inheriting the server's.
+    location = /index.html {
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy same-origin always;
+    }
+
+    # This is a single-page app, but its routes are hash routes: the browser
+    # asks for `/` and then navigates inside the document, so the server only
+    # ever sees real paths. There is therefore no client-side route to fall back
+    # to, and the previous `try_files ... /index.html` answered every unknown
+    # pathname with the shell — including `/admin/`, `/audio/touch.mp3` and
+    # `/portfolio/no-such-plan.png`, each of which returned 200 and a full HTML
+    # document. A missing file is a missing file: 404, and nothing else.
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

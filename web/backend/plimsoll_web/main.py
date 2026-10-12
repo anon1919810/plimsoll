@@ -1,0 +1,304 @@
+"""FastAPI routes for the private Plimsoll workspace."""
+
+from typing import Literal
+import uuid
+
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+
+from . import auth, damage_lab_runs, projects, runs
+from .config import Settings
+from .db import get_db, make_session_factory
+from .mailer import mailer_from_settings
+from .models import utc_now
+
+
+class CodeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str
+
+
+class CodeVerification(CodeRequest):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class Preferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    theme: Literal["light", "dark"]
+
+
+class ProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    template: Literal["analytic_box", "generic_steamer"] | None
+    name: str = Field(min_length=1, max_length=200)
+
+
+class ProjectSave(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    base_revision: int = Field(ge=1)
+    project: dict
+
+
+class ProjectImportPreview(BaseModel):
+    """A backup as it was downloaded: nothing about the destination yet."""
+
+    model_config = ConfigDict(extra="forbid")
+    project: dict
+
+
+class ProjectImport(BaseModel):
+    """A backup plus the name the reader confirmed for the new project.
+
+    ``name`` is optional so the server never invents one: omitted, the backup's
+    own name is kept. Supplied, it is the reader's decision and is bounded here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    project: dict
+    name: str | None = Field(default=None, max_length=200)
+
+
+class RunCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1)
+    condition_id: str
+    options: dict = Field(default_factory=dict)
+
+
+class AnonymousRequest(BaseModel):
+    """No fields: the workspace identity is minted by the server, never supplied."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DamageLabCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1)
+    condition_id: str
+    experiment: dict
+
+
+MAX_REQUEST_BYTES = 8 * 1024 * 1024
+
+
+def create_app(settings: Settings) -> FastAPI:
+    app = FastAPI(title="Plimsoll")
+    app.state.settings = settings
+    app.state.session_factory = make_session_factory(settings.database_url)
+    app.state.mailer = mailer_from_settings(settings)
+
+    def require_email_mode() -> None:
+        if settings.auth_mode != "email":
+            raise HTTPException(status_code=404, detail="email login is not available")
+
+    @app.middleware("http")
+    async def require_browser_write_origin(request: Request, call_next):
+        if request.url.path.startswith("/api/") and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            content_length = request.headers.get("content-length")
+            if content_length is not None and content_length.isdigit() and int(content_length) > MAX_REQUEST_BYTES:
+                return JSONResponse(status_code=413, content={"detail": "request too large"})
+            if request.headers.get("origin") not in settings.allowed_origins:
+                return JSONResponse(status_code=403, content={"detail": "untrusted request origin"})
+            if request.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+                return JSONResponse(status_code=415, content={"detail": "JSON content type required"})
+            body = bytearray()
+            async for chunk in request.stream():
+                if len(body) + len(chunk) > MAX_REQUEST_BYTES:
+                    return JSONResponse(status_code=413, content={"detail": "request too large"})
+                body.extend(chunk)
+            # Starlette's cached request body lets the route parse the same bounded bytes.
+            request._body = bytes(body)
+        return await call_next(request)
+
+    @app.get("/api/health")
+    def health() -> dict[str, str]:
+        return {"service": "plimsoll-web", "status": "ok"}
+
+    @app.get("/api/auth/config")
+    def auth_config() -> dict[str, str]:
+        return {"mode": settings.auth_mode}
+
+    @app.post("/api/auth/anonymous")
+    def anonymous(body: AnonymousRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+        if settings.auth_mode != "anonymous":
+            raise HTTPException(status_code=404, detail="anonymous workspace is not available")
+        login = auth.anonymous_workspace(
+            request.client.host if request.client else "unknown", db, request,
+        )
+        response.set_cookie(
+            "plimsoll_session", login.token, httponly=True,
+            secure=not settings.allow_insecure_cookies, samesite="lax",
+            max_age=int(auth.ANONYMOUS_SESSION_LIFETIME.total_seconds()), path="/",
+        )
+        return {"id": str(login.user.id), "email": login.user.email, "theme": login.user.theme,
+                "csrf_token": login.csrf_token, "mode": "anonymous", "label": auth.ANONYMOUS_LABEL}
+
+    @app.post("/api/auth/request-code", status_code=202)
+    def request_code(body: CodeRequest, request: Request, db: Session = Depends(get_db)):
+        require_email_mode()
+        auth.request_code(
+            body.email, request.client.host if request.client else "unknown", db,
+            request.app.state.mailer, settings,
+        )
+        return {"message": "若该邮箱可接收邮件，验证码将很快送达"}
+
+    @app.post("/api/auth/verify-code")
+    def verify_code(body: CodeVerification, response: Response, db: Session = Depends(get_db)):
+        require_email_mode()
+        login = auth.verify_code(body.email, body.code, db, settings)
+        response.set_cookie(
+            "plimsoll_session", login.token, httponly=True,
+            secure=not settings.allow_insecure_cookies, samesite="lax",
+            max_age=int(auth.SESSION_LIFETIME.total_seconds()), path="/",
+        )
+        return {"id": str(login.user.id), "email": login.user.email, "theme": login.user.theme,
+                "csrf_token": login.csrf_token, "mode": "email", "label": login.user.email}
+
+    @app.get("/api/me")
+    def me(request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        anonymous_owner = auth.is_anonymous_user(user)
+        return {"id": str(user.id), "email": user.email, "theme": user.theme,
+                "csrf_token": request.state.user_session.csrf_token,
+                "mode": "anonymous" if anonymous_owner else "email",
+                "label": auth.ANONYMOUS_LABEL if anonymous_owner else user.email}
+
+    @app.patch("/api/me/preferences")
+    def preferences(body: Preferences, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        user.theme = body.theme
+        db.commit()
+        return {"theme": user.theme}
+
+    @app.post("/api/auth/logout")
+    def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+        auth.get_current_user(request, db)
+        request.state.user_session.revoked_at = utc_now()
+        db.commit()
+        response.delete_cookie("plimsoll_session", path="/")
+        return {"status": "signed_out"}
+
+    @app.get("/api/projects")
+    def list_projects(request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return projects.list_projects(user.id, db)
+
+    @app.post("/api/projects", status_code=201)
+    def create_project(body: ProjectCreate, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return projects.create_project(user.id, body.template, body.name, db)
+
+    @app.post("/api/projects/import-preview")
+    def preview_project_import(
+        body: ProjectImportPreview, request: Request, db: Session = Depends(get_db),
+    ):
+        # A preview only reads the submitted document; it never touches a project,
+        # so it is declared before the {project_id} routes it must not shadow.
+        auth.get_current_user(request, db)
+        return projects.preview_project_import(body.project)
+
+    @app.post("/api/projects/import", status_code=201)
+    def import_project(
+        body: ProjectImport, request: Request, db: Session = Depends(get_db),
+    ):
+        user = auth.get_current_user(request, db)
+        return projects.import_project(user.id, body.project, body.name, db)
+
+    @app.get("/api/projects/{project_id}")
+    def get_project(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return projects.get_project(user.id, project_id, db)
+
+    @app.put("/api/projects/{project_id}")
+    def save_project(project_id: uuid.UUID, body: ProjectSave, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        try:
+            return projects.save_project(user.id, project_id, body.base_revision, body.project, db)
+        except projects.RevisionConflict as error:
+            return JSONResponse(status_code=409, content={"current_revision": error.current_revision})
+
+    @app.delete("/api/projects/{project_id}", status_code=204)
+    def delete_project(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        projects.delete_project(user.id, project_id, db)
+
+    @app.get("/api/projects/{project_id}/runs")
+    def list_runs(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return runs.list_runs(user.id, project_id, db)
+
+    @app.post("/api/projects/{project_id}/runs", status_code=202)
+    def enqueue_run(project_id: uuid.UUID, body: RunCreate, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        try:
+            return runs.enqueue_run(user.id, project_id, body.revision, body.condition_id, body.options, db)
+        except projects.RevisionConflict as error:
+            return JSONResponse(status_code=409, content={"current_revision": error.current_revision})
+
+    @app.get("/api/runs/{run_id}")
+    def get_run(run_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return runs.get_run(user.id, run_id, db)
+
+    @app.post("/api/runs/{run_id}/cancel")
+    def cancel_run(run_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return runs.cancel_run(user.id, run_id, db)
+
+    @app.get("/api/runs/{run_id}/export")
+    def export_run(run_id: uuid.UUID, format: str, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        data = runs.export_run(user.id, run_id, format, db)
+        return PlainTextResponse(data, media_type="application/json" if format == "json" else "text/csv; charset=utf-8")
+
+    @app.get("/api/projects/{project_id}/damage-lab-setup")
+    def lab_setup(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return damage_lab_runs.setup(user.id, project_id, db)
+
+    @app.get("/api/damage-lab-demo")
+    def lab_demo(request: Request, db: Session = Depends(get_db)):
+        auth.get_current_user(request, db)
+        return damage_lab_runs.demo()
+
+    @app.get("/api/projects/{project_id}/damage-lab-runs")
+    def lab_list(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return damage_lab_runs.list_runs(user.id, project_id, db)
+
+    @app.post("/api/projects/{project_id}/damage-lab-runs", status_code=202)
+    def lab_enqueue(project_id: uuid.UUID, body: DamageLabCreate, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        try:
+            return damage_lab_runs.enqueue(user.id, project_id, body.revision, body.condition_id, body.experiment, db)
+        except projects.RevisionConflict as error:
+            return JSONResponse(status_code=409, content={"current_revision": error.current_revision})
+
+    @app.post("/api/projects/{project_id}/damage-lab-preview")
+    def lab_preview(project_id: uuid.UUID, body: DamageLabCreate, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        try:
+            return damage_lab_runs.preview(user.id, project_id, body.revision, body.condition_id, body.experiment, db)
+        except projects.RevisionConflict as error:
+            return JSONResponse(status_code=409, content={"current_revision": error.current_revision})
+
+    @app.get("/api/damage-lab-runs/{run_id}")
+    def lab_read(run_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return damage_lab_runs.get(user.id, run_id, db)
+
+    @app.post("/api/damage-lab-runs/{run_id}/cancel")
+    def lab_cancel(run_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        return damage_lab_runs.cancel(user.id, run_id, db)
+
+    @app.get("/api/damage-lab-runs/{run_id}/export")
+    def lab_export(run_id: uuid.UUID, format: str, request: Request, db: Session = Depends(get_db)):
+        user = auth.get_current_user(request, db)
+        data = damage_lab_runs.export(user.id, run_id, format, db)
+        return PlainTextResponse(data, media_type="application/json" if format == "json" else "text/csv; charset=utf-8")
+
+    return app
