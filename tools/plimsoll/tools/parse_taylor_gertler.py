@@ -15,8 +15,8 @@ import sys
 
 import pymupdf  # noqa: E402
 
-SRC = r'C:\Users\杨睿\Desktop\732584747-Ship-Resistance-and-Propulsion-Ref1.pdf'
-OUT = r'C:\Users\杨睿\WorkBuddy\2026-09-17-17-33-38\_tg_parsed.json'
+SRC = 'taylor-gertler-source.pdf'  # your own copy; not shipped
+OUT = '_tg_parsed.json'  # written by parse_taylor_gertler.py
 PAGES = {67: 0.50, 68: 0.60, 69: 0.70, 70: 0.80}
 GROUPS = [5.5, 6.0, 7.0, 8.0, 9.0, 10.0]
 BTS = [2.25, 3.00, 3.75]

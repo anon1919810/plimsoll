@@ -16,7 +16,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.dirname(HERE)
-PARSED = r'C:\Users\杨睿\WorkBuddy\2026-09-17-17-33-38\_tg_parsed.json'
+PARSED = '_tg_parsed.json'  # written by parse_taylor_gertler.py
 OUT = os.path.join(PKG, 'cases', 'taylor_gertler_cr_table.json')
 
 GROUPS = [5.5, 6.0, 7.0, 8.0, 9.0, 10.0]
