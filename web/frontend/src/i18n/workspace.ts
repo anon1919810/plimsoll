@@ -141,9 +141,6 @@ const EN = {
   'library.template.generic_steamer.name': 'Generic steamer',
   'library.template.generic_steamer.tag': 'Demonstration case',
   'library.template.generic_steamer.text': 'A complete hull and loading set, for exploring calculations across conditions.',
-  'library.template.queen_mary_1913.name': 'HMS Queen Mary',
-  'library.template.queen_mary_1913.tag': 'Uncertified historical proxy',
-  'library.template.queen_mary_1913.text': 'An engineering proxy of a First World War battlecruiser. Every estimate and historical gap stays marked as one.',
   'library.blank.title': 'Blank project',
   'library.blank.text': 'Start from your own data; unknown inputs stay unknown.',
   'library.blank.label': 'New project name',
@@ -2317,9 +2314,6 @@ const ZH: WorkspaceDictionary = {
   'library.template.generic_steamer.name': '通用试验船',
   'library.template.generic_steamer.tag': '示范案例',
   'library.template.generic_steamer.text': '带完整型线与载荷，用于探索多工况计算。',
-  'library.template.queen_mary_1913.name': 'HMS Queen Mary',
-  'library.template.queen_mary_1913.tag': '史实未认证代理',
-  'library.template.queen_mary_1913.text': '一战战列巡洋舰工程代理。所有估算和史料缺口均保留标记。',
   'library.blank.title': '空白项目',
   'library.blank.text': '从自己的数据开始，未知输入会继续保持未知。',
   'library.blank.label': '新项目名称',
@@ -4350,7 +4344,6 @@ export function workspaceDictionary(language: SiteLanguage): WorkspaceDictionary
 export const TEMPLATE_STORED_NAMES: Readonly<Record<string, string>> = {
   analytic_box: '解析方箱',
   generic_steamer: '通用试验船',
-  queen_mary_1913: 'HMS Queen Mary',
 };
 
 /** The name a project created from `key` is saved under, in either language. */

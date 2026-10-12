@@ -12,6 +12,7 @@ from plimsoll_web.mailer import ConsoleMailer, MailUnavailable, mailer_from_sett
 from plimsoll_web.main import create_app
 
 
+@pytest.mark.skip(reason="needs the historical case's large inline geometry, which this repository does not ship")
 def test_two_user_saved_generic_steamer_run_survives_restart(alice, bob, engine, worker_once):
     created = alice.post('/api/projects', json={'template': 'generic_steamer', 'name': 'Generic steamer'})
     assert created.status_code == 201

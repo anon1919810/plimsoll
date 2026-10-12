@@ -943,7 +943,7 @@ export function Workbench({ projectId, onBack, onRun, onDirtyChange, onLab }: {
           hand-edited JSON document survives the switch with its value, its focus
           and its selection. */}
       <div className="workbench-content" data-motion={chapterMotion}>
-        <ChapterHead chapter={chapter} name={draft.name} projectId={draft.id} revision={view.revision} proxy={draft.name.toLowerCase().includes('queen mary')} />
+        <ChapterHead chapter={chapter} name={draft.name} projectId={draft.id} revision={view.revision} proxy={false} />
         {chapter === 'overview' && <WorkbenchOverview draft={draft} revision={view.revision} conditionId={conditionId}
           runs={runs} current={selectedRun} previous={historyOfSelected} requestStages={requestStages}
           requestError={runError} dirty={dirty || jsonEdited} historyState={runsState} resultState={resultState} previousState={historyCandidate?.id === currentResultId ? resultState : previousState} onRefreshRuns={() => setRunsAttempt(value => value + 1)} onChapter={goChapter} onRun={onRun} onNavigate={jumpTo} />}
