@@ -80,17 +80,13 @@ dependency, which satisfies that. The core calculation package (`tools/plimsoll`
 
 | file | status |
 |---|---|
-| `tools/plimsoll/cases/taylor_gertler_cr_table.json` | coefficient table parsed from a printed book — **source citation pending**, see below |
+| `tools/plimsoll/cases/taylor_gertler_cr_table.json` | residual-resistance coefficients transcribed from Molland, Turnock & Hudson, *Ship Resistance and Propulsion*, Appendix A3, Tables A3.8-A3.11 (pp. 495-498) - the citation is recorded in the file itself |
 | `data/british_armour_standards_1908_1912.json` | armour-standards dataset — **source citation pending**, the file carries no provenance field |
 | `tools/plimsoll/cases/damage_scenarios.json`, `generic_test_steamer_1910.json`, `damage_lab/*`, `projects/analytic_box.project.json`, `projects/generic_flooding_box.project.json`, `projects/generic_steamer.project.json`, `projects/damage-presets.json`, `templates/speed_power.html` | synthetic study material created for this project |
 | historical-ship cases (Queen Mary) | **not included** in this repository, by decision: the ship's case data and the tests anchored on it stay in the author's private repository |
 
-### Two citations that must be added before publication
+### One citation still to add
 
-1. `taylor_gertler_cr_table.json` — the printed source (author, title, edition, page) of the Taylor–Gertler
-   residual-resistance table.
-2. `data/british_armour_standards_1908_1912.json` — the published standards or documents the dataset was
-   compiled from.
-
-Neither is a code dependency; both are factual data compiled by the author, but citing the sources is the
-honest thing to do and the file names give no clue.
+`data/british_armour_standards_1908_1912.json` carries no `source` field of its own, so the
+published standards it was compiled from still have to be named here. It is factual data
+compiled by the author, not a code dependency, but the file gives no clue on its own.
