@@ -17,9 +17,9 @@
       "api_version": 1013,
       "platform": "win32"
     },
-    "working_directory": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0",
+    "working_directory": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0",
     "working_directory_affects_results": false,
-    "repository_root": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0",
+    "repository_root": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0",
     "network_access": "none",
     "writes_production_state": false,
     "dependencies_added": []

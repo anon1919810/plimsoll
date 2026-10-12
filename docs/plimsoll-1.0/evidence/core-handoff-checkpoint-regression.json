@@ -3,14 +3,14 @@
   "label": "core-handoff-checkpoint",
   "start_utc": "2026-09-22T07:34:21.590025+00:00",
   "command": [
-    "C:\\Users\\杨睿\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
+    "<home>\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
     "-B",
     "tools/plimsoll/run_all_tests.py"
   ],
-  "cwd": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0",
+  "cwd": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0",
   "head_before_scoped_commits": "4bec0818b5fccda5dc060e18425bc9762dc13a19",
   "runtime": "3.13.14 (main, Jun 11 2026, 04:04:46) [MSC v.1944 64 bit (AMD64)]",
-  "runtime_executable": "C:\\Users\\杨睿\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
+  "runtime_executable": "<home>\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
   "runtime_executable_sha256": "ec8139feb5012b12a531196f257fddf53668f0109918d5d44ffa195cf352fdd6",
   "elapsed_wall_s": 189.9554255999974,
   "exit_code": 0,

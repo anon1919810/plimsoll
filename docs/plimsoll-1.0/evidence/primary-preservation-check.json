@@ -1,7 +1,7 @@
 {
   "kind": "read_only_primary_snapshot_check",
   "observed_utc": "2026-09-22T06:38:23.9262197Z",
-  "source": "C:\\Users\\杨睿\\Desktop\\HMS_Queen_Mary_建模成果_2026-09-17",
+  "source": "<home>\\Desktop\\HMS_Queen_Mary_建模成果_2026-09-17",
   "baseline_head": "e1596eaf7203fbc3cce4b5f2b884778d9d1f7940",
   "observed_head": "e1596eaf7203fbc3cce4b5f2b884778d9d1f7940",
   "files": [

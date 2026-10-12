@@ -1,7 +1,7 @@
 {
   "kind": "runtime_metadata_probe_not_regression_run",
   "date": "2026-09-22",
-  "executable": "C:\\Users\\杨睿\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
+  "executable": "<home>\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
   "version": "3.13.14 (main, Jun 11 2026, 04:04:46) [MSC v.1944 64 bit (AMD64)]",
   "version_info": [
     3,

@@ -5,7 +5,7 @@
  "worktree_head_commit": "72d61b95e53005ea3a6c0405f83000731dc7819b",
  "environment": {
   "python_version": "3.13.14 (main, Jun 11 2026, 04:04:46) [MSC v.1944 64 bit (AMD64)]",
-  "python_executable": "C:\\Users\\杨睿\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
+  "python_executable": "<home>\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
   "python_executable_sha256": "ec8139feb5012b12a531196f257fddf53668f0109918d5d44ffa195cf352fdd6",
   "platform": "Windows-11-10.0.26200-SP0",
   "machine": "AMD64",
@@ -61,7 +61,7 @@
    },
    "inside_interval": "analysis.compute_project only (no parse/serialize)",
    "project_facts": {
-    "path": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json",
+    "path": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json",
     "bytes": 2552753,
     "sha256": "7b03e33b210bdb4c281b539d6fa35307dd885c5f87d11d6f6edf81191882b657",
     "project_id": "hms-queen-mary-1913",
@@ -127,7 +127,7 @@
    "min_s": 9.614199,
    "max_s": 9.899034,
    "workload": "batch_cli",
-   "manifest": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\docs\\plimsoll-1.0\\evidence\\_bench_tmp\\batch-manifest.json",
+   "manifest": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\docs\\plimsoll-1.0\\evidence\\_bench_tmp\\batch-manifest.json",
    "exit_codes": [
     0,
     0,
@@ -450,7 +450,7 @@
    ],
    "inside_interval": "analysis.compute_project only (no parse/serialize)",
    "project_facts": {
-    "path": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json",
+    "path": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json",
     "bytes": 2552753,
     "sha256": "7b03e33b210bdb4c281b539d6fa35307dd885c5f87d11d6f6edf81191882b657",
     "project_id": "hms-queen-mary-1913",

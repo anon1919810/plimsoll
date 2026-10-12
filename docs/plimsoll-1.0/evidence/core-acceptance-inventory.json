@@ -1,7 +1,7 @@
 {
   "kind": "current_core_acceptance_inventory_not_completion_evidence",
   "user_instruction": "只需要先做完类SPS的计算功能",
-  "original_source": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\docs\\plimsoll-1.0-long-term-goal.md",
+  "original_source": "<home>\\Documents\\Codex\\2026-09-17\\shi\\docs\\plimsoll-1.0-long-term-goal.md",
   "original_source_sha256_before_scope_amendment": "12282dc09ee0e5ac5a69049e9f2f3918954d7ddcadcd610785a6b051155804fc",
   "current_scope": "docs/plimsoll-1.0/current-core-scope.md",
   "current_scope_sha256": "5a2d382464abd67925e55cf624a3f9e8884957f0f4fe12ce8fd4c48dce904dc2",

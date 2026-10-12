@@ -13,7 +13,7 @@
             "hydrostatics"
           ]
         },
-        "project": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\analytic_box.project.json"
+        "project": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\analytic_box.project.json"
       },
       "diagnostics": [
         {
@@ -79,7 +79,7 @@
             "hydrostatics"
           ]
         },
-        "project": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\analytic_box.project.json"
+        "project": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\analytic_box.project.json"
       },
       "diagnostics": [
         {
@@ -172,7 +172,7 @@
             "hydrostatics"
           ]
         },
-        "project": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\generic_steamer.project.json"
+        "project": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\generic_steamer.project.json"
       },
       "diagnostics": [
         {
@@ -247,7 +247,7 @@
             "hydrostatics"
           ]
         },
-        "project": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\generic_steamer.project.json"
+        "project": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\generic_steamer.project.json"
       },
       "diagnostics": [
         {
@@ -403,7 +403,7 @@
             "hydrostatics"
           ]
         },
-        "project": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json"
+        "project": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json"
       },
       "diagnostics": [
         {
@@ -784,7 +784,7 @@
             "hydrostatics"
           ]
         },
-        "project": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json"
+        "project": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\tools\\plimsoll\\cases\\projects\\queen_mary_1913.project.json"
       },
       "diagnostics": [
         {
@@ -2451,7 +2451,7 @@
     }
   ],
   "manifest": {
-    "path": "C:\\Users\\杨睿\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\docs\\plimsoll-1.0\\evidence\\_bench_tmp\\batch-manifest.json",
+    "path": "<home>\\Documents\\Codex\\2026-09-17\\shi\\work\\plimsoll-1.0\\docs\\plimsoll-1.0\\evidence\\_bench_tmp\\batch-manifest.json",
     "schema": "plimsoll-batch-1"
   },
   "schema": "plimsoll-batch-result-1",
